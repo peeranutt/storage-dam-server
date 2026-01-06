@@ -5,63 +5,54 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
-const HOST = process.env.HOST || 'localhost';
+const PORT = 3002;
 
-// Enable CORS
 app.use(cors());
 
-// Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+  destination: (_, __, cb) => cb(null, uploadsDir),
+  filename: (_, file, cb) => {
+    const uniqueName =
+      Date.now() + '-' + Math.round(Math.random() * 1e9) + path.extname(file.originalname);
+    cb(null, uniqueName);
   },
-  filename: (req, file, cb) => {
-    // Keep original filename
-    cb(null, file.originalname);
-  }
 });
 
 const upload = multer({ storage });
 
-// Upload endpoint
-app.post('/storage/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
+app.post('/upload', 
+  upload.array('files', 10), 
+  (req, res) => {
+    const files = req.files as Express.Multer.File[];
 
-  const fileUrl = `http://${HOST}:${PORT}/storage/file/${req.file.filename}`;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const results = files.map((file) => ({
+      filename: file.filename,
+      originalname: file.originalname,
+      fileUrl: `http://${req.hostname}:${PORT}/storage/file/${file.filename}`,
+    }));
+
   res.json({
-    success: true,
-    message: 'File uploaded successfully',
-    filename: req.file.filename,
-    fileUrl: fileUrl
-  });
+      success: true,
+      count: files.length,
+      files: results,
+    });
 });
 
-// Download endpoint
 app.get('/storage/file/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(uploadsDir, filename);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
-
+  const filePath = path.join(uploadsDir, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.sendStatus(404);
   res.sendFile(filePath);
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK' });
-});
+app.get('/health', (_, res) => res.json({ status: 'OK' }));
 
-app.listen(PORT, () => {
-  console.log(`Storage server running on http://${HOST}:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Storage server running on port ${PORT}`);
 });
