@@ -3,6 +3,7 @@ import multer from 'multer';
 import cors from 'cors';
 import * as path from 'path';
 import * as fs from 'fs';
+import { exec } from 'child_process';
 
 const app = express();
 const PORT = 3002;
